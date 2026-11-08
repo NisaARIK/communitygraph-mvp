@@ -1127,13 +1127,6 @@ if st.button("Analyze with AI", key="analyze_ai_button"):
                     "AI Problem Analyzer failed"
                 )
 
-    # Show only the exception type publicly
-    st.write("Error type:", type(error).__name__)
-
-    # Full details stay in server logs
-    import logging
-    logging.exception("AI Problem Analyzer failed")
-
 if "problem_analysis" in st.session_state:
 
     result = st.session_state["problem_analysis"]
