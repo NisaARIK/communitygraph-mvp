@@ -1252,6 +1252,11 @@ if "problem_analysis" in st.session_state:
 
     analysis_data = st.session_state["problem_analysis"]
 
+st.write(
+    "Analysis data type:",
+    type(analysis_data).__name__
+)
+
     if isinstance(analysis_data, dict):
 
         st.subheader("AI Analysis Results")
