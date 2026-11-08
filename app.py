@@ -1050,19 +1050,6 @@ except Exception:
         "Check application logs."
     )
 
-        results.append({
-            "name": expert["name"],
-            "role": expert["role"],
-            "score": hybrid_score,
-            "skills": sorted(matched),
-            "missing": sorted(missing),
-            "skill_contribution": 0.50 * skill_score,
-            "industry_contribution": 0.20 * industry_score,
-            "graph_contribution": 0.30 * graph_score
-        })
-
-    for expert in experts:
-
         if expert["id"] == p["owner_id"]:
             continue
 
