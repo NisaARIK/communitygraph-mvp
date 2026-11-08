@@ -802,11 +802,61 @@ import json
 from groq import Groq
 
 
+
 def analyze_startup_problem(description):
     client = Groq(
         api_key=st.secrets["GROQ_API_KEY"],
         timeout=30.0
     )
+
+    response = client.chat.completions.create(
+        model="openai/gpt-oss-20b",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You analyze startup problems. "
+                    "Return valid JSON containing: "
+                    "industry, required_skills, expert_roles. "
+                    "Industry must be a string. "
+                    "Skills and roles must be lists of strings. "
+                    "Do not include markdown."
+                )
+            },
+            {
+                "role": "user",
+                "content": description
+            }
+        ],
+        temperature=0,
+        max_completion_tokens=700,
+        response_format={"type": "json_object"}
+    )
+
+    raw = response.choices[0].message.content
+
+    if not raw:
+        raise ValueError("Empty AI response")
+
+    result = json.loads(raw)
+
+    if not isinstance(result, dict):
+        raise ValueError("Invalid JSON object")
+
+    if not isinstance(result.get("industry"), str):
+        raise ValueError("Invalid industry")
+
+    for field in ["required_skills", "expert_roles"]:
+        values = result.get(field)
+
+        if not isinstance(values, list):
+            raise ValueError(f"Invalid {field}")
+
+        if not all(isinstance(x, str) for x in values):
+            raise ValueError(f"Invalid {field} values")
+
+    return result
+
 
 def recommend_from_ai_analysis(analysis):
 
