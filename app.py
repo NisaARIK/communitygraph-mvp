@@ -278,3 +278,253 @@ else:
                         "Could not save the problem. "
                         "Check the application logs."
                     )
+
+# COMMUNITYGRAPH v0.2
+# Automatic Expert Matching
+
+def calculate_expert_matches(problem_id):
+
+    problem_rows = run_query("""
+        MATCH (p:Problem {id: $problem_id})
+
+        OPTIONAL MATCH (p)-[:REQUIRES]->(s:Skill)
+
+        WITH p, collect(DISTINCT s.name) AS skills
+
+        OPTIONAL MATCH (p)-[:IN_SECTOR]->(sector:Sector)
+
+        OPTIONAL MATCH (owner:User)-[:OWNS]->(p)
+
+        RETURN
+            p.id AS id,
+            skills AS required_skills,
+            sector.name AS sector,
+            owner.id AS owner_id
+    """, problem_id=problem_id)
+
+    if not problem_rows:
+        return []
+
+    problem = problem_rows[0]
+
+    required_skills = set(
+        s for s in problem["required_skills"] if s
+    )
+
+    experts = run_query("""
+        MATCH (u:User)
+
+        WHERE u.id <> $owner_id
+          AND u.role <> 'Founder'
+
+        OPTIONAL MATCH (u)-[:HAS_SKILL]->(s:Skill)
+
+        WITH u, collect(DISTINCT s.name) AS skills
+
+        OPTIONAL MATCH (u)-[:INTERESTED_IN]->(sector:Sector)
+
+        RETURN
+            u.id AS id,
+            u.name AS name,
+            u.role AS role,
+            skills AS skills,
+            collect(DISTINCT sector.name) AS interests
+    """, owner_id=problem["owner_id"])
+
+    # Common skill/sector features with the founder
+    feature_rows = run_query("""
+        MATCH (owner:User {id: $owner_id})
+
+        MATCH (expert:User)
+        WHERE expert.id <> $owner_id
+
+        OPTIONAL MATCH (owner)-[:HAS_SKILL|INTERESTED_IN]->(of)
+        WITH owner, expert,
+             collect(DISTINCT of.id) AS owner_features
+
+        OPTIONAL MATCH (expert)-[:HAS_SKILL|INTERESTED_IN]->(ef)
+
+        RETURN expert.id AS id,
+               owner_features AS owner_features,
+               collect(DISTINCT ef.id) AS expert_features
+    """, owner_id=problem["owner_id"])
+
+    feature_map = {
+        r["id"]: r for r in feature_rows
+    }
+
+    results = []
+
+    for expert in experts:
+
+        expert_skills = set(
+            s for s in expert["skills"] if s
+        )
+
+        matched_skills = (
+            required_skills & expert_skills
+        )
+
+        skill_score = (
+            len(matched_skills) / len(required_skills)
+            if required_skills else 0.0
+        )
+
+        industry_score = float(
+            problem["sector"] in expert["interests"]
+        )
+
+        features = feature_map.get(expert["id"], {})
+
+        founder_features = set(
+            x for x in features.get(
+                "owner_features", []
+            ) if x
+        )
+
+        expert_features = set(
+            x for x in features.get(
+                "expert_features", []
+            ) if x
+        )
+
+        union = founder_features | expert_features
+
+        graph_score = (
+            len(founder_features & expert_features)
+            / len(union)
+            if union else 0.0
+        )
+
+        score = (
+            0.65 * skill_score
+            + 0.25 * industry_score
+            + 0.10 * graph_score
+        )
+
+        missing_skills = sorted(
+            required_skills - expert_skills
+        )
+
+        if score < 0.40:
+            continue
+
+        explanation = []
+
+        if matched_skills:
+            explanation.append(
+                "Matching skills: "
+                + ", ".join(sorted(matched_skills))
+            )
+
+        if industry_score:
+            explanation.append(
+                "Interested in the target industry"
+            )
+
+        if graph_score:
+            explanation.append(
+                "Shares skills or sector interests "
+                "with the founder"
+            )
+
+        results.append({
+            "expert_id": expert["id"],
+            "expert": expert["name"],
+            "role": expert["role"],
+            "score": round(score, 4),
+            "matched_skills": sorted(matched_skills),
+            "missing_skills": missing_skills,
+            "explanation": " | ".join(explanation)
+        })
+
+    return sorted(
+        results,
+        key=lambda x: x["score"],
+        reverse=True
+    )
+
+# Find Experts interface
+
+st.divider()
+st.header("Find Experts")
+
+try:
+    available_problems = run_query("""
+        MATCH (p:Problem)
+        RETURN p.id AS id, p.name AS name
+        ORDER BY name
+    """)
+
+    problem_options = {
+        f"{p['name']} ({p['id']})": p["id"]
+        for p in available_problems
+    }
+
+    if not problem_options:
+        st.info("No problems available.")
+    else:
+        selected_problem = st.selectbox(
+            "Choose a problem",
+            list(problem_options.keys()),
+            key="matching_problem"
+        )
+
+        if st.button(
+            "Find Experts",
+            type="primary"
+        ):
+            selected_id = problem_options[selected_problem]
+
+            matches = calculate_expert_matches(
+                selected_id
+            )
+
+            if not matches:
+                st.warning(
+                    "No experts meet the current "
+                    "matching threshold."
+                )
+            else:
+                st.success(
+                    f"{len(matches)} experts found!"
+                )
+
+                for match in matches:
+
+                    with st.container(border=True):
+
+                        col1, col2 = st.columns([3, 1])
+
+                        with col1:
+                            st.subheader(match["expert"])
+                            st.write(match["role"])
+
+                        with col2:
+                            st.metric(
+                                "Match Score",
+                                f"{match['score'] * 100:.1f}%"
+                            )
+
+                        st.progress(match["score"])
+
+                        st.write(
+                            "Matched skills:",
+                            ", ".join(match["matched_skills"])
+                            or "None"
+                        )
+
+                        st.write(
+                            "Missing skills:",
+                            ", ".join(match["missing_skills"])
+                            or "None"
+                        )
+
+                        with st.expander("Why this match?"):
+                            st.write(match["explanation"])
+
+except Exception:
+    st.error(
+        "Could not calculate expert matches. "
+        "Check application logs."
+    )
