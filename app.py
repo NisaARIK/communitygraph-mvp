@@ -1048,3 +1048,16 @@ try:
                                 expert["graph_contribution"], 4
                             )
                         )
+                        st.write(
+                            "Graph contribution:",
+                            round(
+                                expert["graph_contribution"], 4
+                            )
+                        )
+
+    else:
+        st.info("No startup problems found.")
+
+except Exception as error:
+    st.error("AI recommendations could not be loaded.")
+    st.error(f"Error type: {type(error).__name__}")
