@@ -874,8 +874,7 @@ def recommend_from_ai_analysis(analysis):
     )
 
     response = client.chat.completions.create(
-        
-model="openai/gpt-oss-20b",
+        model="openai/gpt-oss-20b",
         messages=[
             {
                 "role": "system",
@@ -898,12 +897,12 @@ model="openai/gpt-oss-20b",
         response_format={"type": "json_object"}
     )
 
-        raw = response.choices[0].message.content
+    raw = response.choices[0].message.content
+
+    if not raw:
+        raise ValueError("AI returned an empty response")
+
     result = json.loads(raw)
-
-    # JSON validation code...
-
-    return result
 
     if not isinstance(result, dict):
         raise ValueError("AI response must be an object")
@@ -921,7 +920,6 @@ model="openai/gpt-oss-20b",
             raise ValueError(f"Invalid values in {field}")
 
     return result
-
 
 def graph_ai_recommend(problem_id):
 
