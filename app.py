@@ -528,3 +528,111 @@ except Exception:
         "Could not calculate expert matches. "
         "Check application logs."
     )
+
+# CommunityGraph v0.3
+# Persist expert recommendations to Neo4j
+
+def save_expert_matches(problem_id, matches):
+
+    saved_count = 0
+
+    for match in matches:
+
+        rows = run_query("""
+            MATCH (p:Problem {id: $problem_id})
+            MATCH (u:User {id: $expert_id})
+
+            MERGE (p)-[r:MATCHED_WITH]->(u)
+
+            SET r.score = $score,
+                r.explanation = $explanation,
+                r.updated_at = datetime()
+
+            RETURN p.id AS problem_id
+        """,
+            problem_id=problem_id,
+            expert_id=match["expert_id"],
+            score=float(match["score"]),
+            explanation=match["explanation"]
+        )
+
+        if rows:
+            saved_count += 1
+
+    return saved_count
+
+# Admin-only match persistence
+
+st.divider()
+st.subheader("Save Expert Matches")
+
+save_password = st.text_input(
+    "Admin password to save matches",
+    type="password",
+    key="save_matches_password"
+)
+
+expected_admin = st.secrets.get(
+    "ADMIN_PASSWORD", ""
+)
+
+can_save = bool(
+    expected_admin
+    and hmac.compare_digest(
+        save_password,
+        expected_admin
+    )
+)
+
+if not can_save:
+    st.info("Admin access is required to save matches.")
+
+else:
+    problems_to_save = run_query("""
+        MATCH (p:Problem)
+        RETURN p.id AS id, p.name AS name
+        ORDER BY name
+    """)
+
+    if problems_to_save:
+
+        options = {
+            f"{p['name']} ({p['id']})": p["id"]
+            for p in problems_to_save
+        }
+
+        selected = st.selectbox(
+            "Problem",
+            list(options.keys()),
+            key="save_match_problem"
+        )
+
+        if st.button("Calculate and Save Matches"):
+
+            problem_id = options[selected]
+
+            try:
+                matches = calculate_expert_matches(
+                    problem_id
+                )
+
+                if matches:
+                    count = save_expert_matches(
+                        problem_id,
+                        matches
+                    )
+
+                    st.success(
+                        f"{count} matches saved to Neo4j!"
+                    )
+
+                else:
+                    st.warning(
+                        "No matches meet the threshold."
+                    )
+
+            except Exception:
+                st.error(
+                    "Could not save matches. "
+                    "Check application logs."
+                )
