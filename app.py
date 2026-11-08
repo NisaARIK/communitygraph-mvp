@@ -1061,6 +1061,159 @@ except Exception:
             "graph_contribution": 0.30 * graph_score
         })
 
+    for expert in experts:
+
+        if expert["id"] == p["owner_id"]:
+            continue
+
+        if expert["node_id"] not in embedding_map:
+            continue
+
+        skills = set(s for s in expert["skills"] if s)
+
+        matched = required & skills
+        missing = required - skills
+
+        if not matched:
+            continue
+
+        skill_score = len(matched) / len(required)
+
+        industry_score = float(
+            p["industry"] is not None
+            and p["industry"] in expert["industries"]
+        )
+
+        similarity = float(cosine_similarity(
+            [embedding_map[p["node_id"]]],
+            [embedding_map[expert["node_id"]]]
+        )[0][0])
+
+        graph_score = max(0.0, min(1.0, similarity))
+
+        hybrid_score = (
+            0.50 * skill_score
+            + 0.20 * industry_score
+            + 0.30 * graph_score
+        )
+
+        results.append({
+            "name": expert["name"],
+            "role": expert["role"],
+            "score": hybrid_score,
+            "skills": sorted(matched),
+            "missing": sorted(missing),
+            "skill_contribution": 0.50 * skill_score,
+            "industry_contribution": 0.20 * industry_score,
+            "graph_contribution": 0.30 * graph_score
+        })
+
+    return sorted(
+        results,
+        key=lambda x: x["score"],
+        reverse=True
+    )
+
+    for expert in experts:
+
+        if expert["id"] == p["owner_id"]:
+            continue
+
+        if expert["node_id"] not in embedding_map:
+            continue
+
+        skills = set(s for s in expert["skills"] if s)
+
+        matched = required & skills
+        missing = required - skills
+
+        if not matched:
+            continue
+
+        skill_score = len(matched) / len(required)
+
+        industry_score = float(
+            p["industry"] is not None
+            and p["industry"] in expert["industries"]
+        )
+
+        similarity = float(cosine_similarity(
+            [embedding_map[p["node_id"]]],
+            [embedding_map[expert["node_id"]]]
+        )[0][0])
+
+        graph_score = max(0.0, min(1.0, similarity))
+
+        hybrid_score = (
+            0.50 * skill_score
+            + 0.20 * industry_score
+            + 0.30 * graph_score
+        )
+
+        results.append({
+            "name": expert["name"],
+            "role": expert["role"],
+            "score": hybrid_score,
+            "skills": sorted(matched),
+            "missing": sorted(missing),
+            "skill_contribution": 0.50 * skill_score,
+            "industry_contribution": 0.20 * industry_score,
+            "graph_contribution": 0.30 * graph_score
+        })
+
+    return sorted(
+        results,
+        key=lambda x: x["score"],
+        reverse=True
+    )
+
+    for expert in experts:
+
+        if expert["id"] == p["owner_id"]:
+            continue
+
+        if expert["node_id"] not in embedding_map:
+            continue
+
+        skills = set(s for s in expert["skills"] if s)
+
+        matched = required & skills
+        missing = required - skills
+
+        if not matched:
+            continue
+
+        skill_score = len(matched) / len(required)
+
+        industry_score = float(
+            p["industry"] is not None
+            and p["industry"] in expert["industries"]
+        )
+
+        similarity = float(cosine_similarity(
+            [embedding_map[p["node_id"]]],
+            [embedding_map[expert["node_id"]]]
+        )[0][0])
+
+        graph_score = max(0.0, min(1.0, similarity))
+
+        hybrid_score = (
+            0.50 * skill_score
+            + 0.20 * industry_score
+            + 0.30 * graph_score
+        )
+
+        results.append({
+            "name": expert["name"],
+            "role": expert["role"],
+            "score": hybrid_score,
+            "skills": sorted(matched),
+            "missing": sorted(missing),
+            "skill_contribution": 0.50 * skill_score,
+            "industry_contribution": 0.20 * industry_score,
+            "graph_contribution": 0.30 * graph_score
+        })
+
     return sorted(
         results,
         key=lambda x: x["score"],
