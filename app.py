@@ -1249,16 +1249,14 @@ if st.button("Analyze with AI", key="analyze_ai_button"):
 
 
 if "problem_analysis" in st.session_state:
-
     analysis_data = st.session_state["problem_analysis"]
 
-st.write(
-    "Analysis data type:",
-    type(analysis_data).__name__
-)
+    st.write(
+        "Analysis data type:",
+        type(analysis_data).__name__
+    )
 
     if isinstance(analysis_data, dict):
-
         st.subheader("AI Analysis Results")
 
         st.write(
@@ -1267,25 +1265,19 @@ st.write(
         )
 
         st.write("**Required Skills:**")
-
         for skill in analysis_data.get("required_skills", []):
             st.write("•", skill)
 
         st.write("**Recommended Expert Roles:**")
-
         for role in analysis_data.get("expert_roles", []):
             st.write("•", role)
-
-        st.info(
-            "This is an AI-generated draft. "
-            "Review the results before saving."
-        )
 
     else:
         st.error(
             "Invalid AI analysis data. "
             "Please analyze the problem again."
         )
+
 
 
 # COMMUNITYGRAPH - AI Expert Matching
