@@ -1049,7 +1049,19 @@ except Exception:
         "AI recommendations could not be loaded. "
         "Check application logs."
     )
- sorted(
+
+        results.append({
+            "name": expert["name"],
+            "role": expert["role"],
+            "score": hybrid_score,
+            "skills": sorted(matched),
+            "missing": sorted(missing),
+            "skill_contribution": 0.50 * skill_score,
+            "industry_contribution": 0.20 * industry_score,
+            "graph_contribution": 0.30 * graph_score
+        })
+
+    return sorted(
         results,
         key=lambda x: x["score"],
         reverse=True
