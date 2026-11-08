@@ -1219,7 +1219,7 @@ if st.button("Analyze with AI", key="analyze_ai_button"):
                 st.session_state["problem_analysis"] = (
                     analysis_result
                 )
-
+                st.session_state.pop("ai_expert_matches", None)
                 st.success("AI analysis completed!")
 
             except Exception as error:
@@ -1266,4 +1266,81 @@ if "problem_analysis" in st.session_state:
     st.info(
         "This is an AI-generated draft. "
         "Review the results before saving."
+    )
+
+# COMMUNITYGRAPH - AI Expert Matching
+
+st.divider()
+st.subheader("Find Experts for Your AI-Analyzed Problem")
+
+if "problem_analysis" in st.session_state:
+
+    analysis = st.session_state["problem_analysis"]
+
+    if st.button(
+        "Find Matching Experts",
+        key="find_ai_experts"
+    ):
+        with st.spinner("Finding matching experts..."):
+            try:
+                matches = recommend_from_ai_analysis(
+                    analysis
+                )
+
+                st.session_state["ai_expert_matches"] = (
+                    matches
+                )
+
+                st.success("Expert matching completed!")
+
+            except Exception:
+                st.error(
+                    "Expert matching failed. "
+                    "Check application logs."
+                )
+                import logging
+                logging.exception(
+                    "AI expert matching failed"
+                )
+
+    if "ai_expert_matches" in st.session_state:
+
+        matches = st.session_state["ai_expert_matches"]
+
+        if not matches:
+            st.info(
+                "No matching experts found for "
+                "the extracted skills."
+            )
+
+        for rank, expert in enumerate(matches, start=1):
+
+            with st.container(border=True):
+
+                st.subheader(
+                    f"{rank}. {expert['name']}"
+                )
+
+                st.caption(expert["role"])
+
+                st.metric(
+                    "Skill & Industry Match Score",
+                    f"{expert['score']:.4f}"
+                )
+
+                st.write(
+                    "**Matching Skills:**",
+                    ", ".join(expert["matched_skills"])
+                )
+
+                st.write(
+                    "**Missing Skills:**",
+                    ", ".join(expert["missing_skills"])
+                    or "None"
+                )
+
+else:
+    st.info(
+        "Analyze a startup problem first "
+        "to find matching experts."
     )
