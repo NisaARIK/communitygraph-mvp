@@ -1247,26 +1247,41 @@ if st.button("Analyze with AI", key="analyze_ai_button"):
                     "AI Problem Analyzer failed"
                 )
 
+
 if "problem_analysis" in st.session_state:
 
-    result = st.session_state["problem_analysis"]
+    analysis_data = st.session_state["problem_analysis"]
 
-    st.subheader("AI Analysis Results")
+    if isinstance(analysis_data, dict):
 
-    st.write("**Industry:**", result["industry"])
+        st.subheader("AI Analysis Results")
 
-    st.write("**Required Skills:**")
-    for skill in result["required_skills"]:
-        st.write("•", skill)
+        st.write(
+            "**Industry:**",
+            analysis_data.get("industry", "Unknown")
+        )
 
-    st.write("**Recommended Expert Roles:**")
-    for role in result["expert_roles"]:
-        st.write("•", role)
+        st.write("**Required Skills:**")
 
-    st.info(
-        "This is an AI-generated draft. "
-        "Review the results before saving."
-    )
+        for skill in analysis_data.get("required_skills", []):
+            st.write("•", skill)
+
+        st.write("**Recommended Expert Roles:**")
+
+        for role in analysis_data.get("expert_roles", []):
+            st.write("•", role)
+
+        st.info(
+            "This is an AI-generated draft. "
+            "Review the results before saving."
+        )
+
+    else:
+        st.error(
+            "Invalid AI analysis data. "
+            "Please analyze the problem again."
+        )
+
 
 # COMMUNITYGRAPH - AI Expert Matching
 
