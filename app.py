@@ -809,7 +809,8 @@ def analyze_startup_problem(description):
     )
 
     response = client.chat.completions.create(
-        model="qwen/qwen3-32b",
+        
+model="openai/gpt-oss-20b",
         messages=[
             {
                 "role": "system",
