@@ -1061,3 +1061,66 @@ try:
 except Exception as error:
     st.error("AI recommendations could not be loaded.")
     st.error(f"Error type: {type(error).__name__}")
+
+# COMMUNITYGRAPH - AI Problem Analyzer
+
+st.divider()
+st.header("AI Problem Analyzer")
+
+st.write(
+    "Describe your startup problem. "
+    "AI will identify the industry, "
+    "required skills and expert roles."
+)
+
+problem_text = st.text_area(
+    "Describe your startup problem",
+    placeholder=(
+        "We are building an AI-powered logistics "
+        "platform to predict delivery delays..."
+    ),
+    height=150,
+    key="ai_problem_text"
+)
+
+if st.button("Analyze with AI", key="analyze_ai_button"):
+
+    if len(problem_text.strip()) < 20:
+        st.warning("Please enter a longer description.")
+
+    else:
+        with st.spinner("AI is analyzing your problem..."):
+            try:
+                analysis_result = analyze_startup_problem(
+                    problem_text.strip()
+                )
+                st.session_state["problem_analysis"] = (
+                    analysis_result
+                )
+
+            except Exception:
+                st.error(
+                    "AI analysis failed. Check the API "
+                    "configuration and application logs."
+                )
+
+if "problem_analysis" in st.session_state:
+
+    result = st.session_state["problem_analysis"]
+
+    st.subheader("AI Analysis Results")
+
+    st.write("**Industry:**", result["industry"])
+
+    st.write("**Required Skills:**")
+    for skill in result["required_skills"]:
+        st.write("•", skill)
+
+    st.write("**Recommended Expert Roles:**")
+    for role in result["expert_roles"]:
+        st.write("•", role)
+
+    st.info(
+        "This is an AI-generated draft. "
+        "Review the results before saving."
+    )
