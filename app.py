@@ -636,3 +636,157 @@ else:
                     "Could not save matches. "
                     "Check application logs."
                 )
+
+# COMMUNITYGRAPH v0.4
+# User and Expert Profile Creation
+
+def create_user_profile(name, role, skills, interests):
+
+    import uuid
+
+    user_id = "u_" + uuid.uuid4().hex[:12]
+
+    rows = run_query("""
+        CREATE (u:User {
+            id: $user_id,
+            name: $name,
+            role: $role
+        })
+
+        WITH u
+
+        FOREACH (skill_name IN $skills |
+            MERGE (s:Skill {
+                id: 'skill:' + skill_name
+            })
+            ON CREATE SET
+                s.name = skill_name,
+                s.type = 'Skill'
+
+            MERGE (u)-[:HAS_SKILL]->(s)
+        )
+
+        WITH u
+
+        FOREACH (sector_name IN $interests |
+            MERGE (sector:Sector {
+                id: 'sector:' + sector_name
+            })
+            ON CREATE SET
+                sector.name = sector_name,
+                sector.type = 'Sector'
+
+            MERGE (u)-[:INTERESTED_IN]->(sector)
+        )
+
+        RETURN u.id AS id
+    """,
+        user_id=user_id,
+        name=name,
+        role=role,
+        skills=skills,
+        interests=interests
+    )
+
+    return rows[0]["id"] if rows else None
+
+# Profile creation interface
+
+st.divider()
+st.header("Create Expert Profile")
+
+profile_password = st.text_input(
+    "Admin password for profile creation",
+    type="password",
+    key="profile_admin_password"
+)
+
+expected_admin = st.secrets.get(
+    "ADMIN_PASSWORD", ""
+)
+
+can_create_profile = bool(
+    expected_admin
+    and hmac.compare_digest(
+        profile_password,
+        expected_admin
+    )
+)
+
+if not can_create_profile:
+    st.info(
+        "Admin access is required to create profiles."
+    )
+
+else:
+    with st.form("create_profile_form"):
+
+        name = st.text_input(
+            "Full name"
+        )
+
+        role = st.selectbox(
+            "Professional role",
+            [
+                "ML Engineer",
+                "Data Scientist",
+                "Developer",
+                "Designer",
+                "Founder",
+                "Researcher",
+                "Product Manager"
+            ]
+        )
+
+        skills_text = st.text_input(
+            "Skills (comma-separated)",
+            placeholder="Python, Machine Learning, NLP"
+        )
+
+        interests_text = st.text_input(
+            "Industry interests (comma-separated)",
+            placeholder="AI, HealthTech"
+        )
+
+        submitted = st.form_submit_button(
+            "Create Profile"
+        )
+
+    if submitted:
+
+        skills = list(dict.fromkeys(
+            s.strip()
+            for s in skills_text.split(",")
+            if s.strip()
+        ))
+
+        interests = list(dict.fromkeys(
+            s.strip()
+            for s in interests_text.split(",")
+            if s.strip()
+        ))
+
+        if not name.strip() or not skills:
+            st.error(
+                "Name and at least one skill are required."
+            )
+
+        else:
+            try:
+                new_id = create_user_profile(
+                    name.strip(),
+                    role,
+                    skills,
+                    interests
+                )
+
+                st.success(
+                    f"Profile created successfully! "
+                    f"User ID: {new_id}"
+                )
+
+            except Exception:
+                st.error(
+                    "Could not create profile. "
+                    "Check application logs."
+                )
