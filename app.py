@@ -790,3 +790,267 @@ else:
                     "Could not create profile. "
                     "Check application logs."
                 )
+
+# COMMUNITYGRAPH AI - Graph Recommendation
+
+import networkx as nx
+import numpy as np
+from sklearn.decomposition import TruncatedSVD
+from sklearn.metrics.pairwise import cosine_similarity
+
+
+def graph_ai_recommend(problem_id):
+
+    # Read graph structure, excluding saved predictions
+    edges = run_query("""
+        MATCH (a)-[r]->(b)
+        WHERE type(r) IN [
+            'HAS_SKILL',
+            'INTERESTED_IN',
+            'REQUIRES',
+            'IN_SECTOR',
+            'OWNS'
+        ]
+        RETURN
+            elementId(a) AS source,
+            elementId(b) AS target
+    """)
+
+    G = nx.Graph()
+
+    for edge in edges:
+        G.add_edge(edge["source"], edge["target"])
+
+    if G.number_of_nodes() < 3:
+        return []
+
+    nodes = list(G.nodes())
+    A = nx.to_numpy_array(G, nodelist=nodes)
+
+    features = A + A @ A
+
+    svd = TruncatedSVD(
+        n_components=min(8, len(nodes) - 1),
+        random_state=42
+    )
+
+    embeddings = svd.fit_transform(features)
+
+    embedding_map = dict(zip(nodes, embeddings))
+
+    # Problem details
+    problem_rows = run_query("""
+        MATCH (p:Problem {id: $problem_id})
+
+        OPTIONAL MATCH (p)-[:REQUIRES]->(s:Skill)
+        WITH p, collect(DISTINCT s.name) AS skills
+
+        OPTIONAL MATCH (p)-[:IN_SECTOR]->(i:Sector)
+        WITH p, skills, head(collect(DISTINCT i.name)) AS industry
+
+        OPTIONAL MATCH (owner:User)-[:OWNS]->(p)
+
+        RETURN
+            elementId(p) AS node_id,
+            skills,
+            industry,
+            head(collect(DISTINCT owner.id)) AS owner_id
+    """, problem_id=problem_id)
+
+    if not problem_rows:
+        return []
+
+    p = problem_rows[0]
+
+    if p["node_id"] not in embedding_map:
+        return []
+
+    required = set(s for s in p["skills"] if s)
+
+    if not required:
+        return []
+
+    # Expert details
+    experts = run_query("""
+        MATCH (u:User)
+        OPTIONAL MATCH (u)-[:HAS_SKILL]->(s:Skill)
+        WITH u, collect(DISTINCT s.name) AS skills
+
+        OPTIONAL MATCH (u)-[:INTERESTED_IN]->(i:Sector)
+
+        RETURN
+            elementId(u) AS node_id,
+            u.id AS id,
+            u.name AS name,
+            u.role AS role,
+            skills,
+            collect(DISTINCT i.name) AS industries
+    """)
+
+    results = []
+
+    for expert in experts:
+
+        if expert["id"] == p["owner_id"]:
+            continue
+
+        if expert["node_id"] not in embedding_map:
+            continue
+
+        skills = set(s for s in expert["skills"] if s)
+
+        matched = required & skills
+        missing = required - skills
+
+        # Require at least one matching skill
+        if not matched:
+            continue
+
+        skill_score = len(matched) / len(required)
+
+        industry_score = float(
+            p["industry"] is not None
+            and p["industry"] in expert["industries"]
+        )
+
+        similarity = float(cosine_similarity(
+            [embedding_map[p["node_id"]]],
+            [embedding_map[expert["node_id"]]]
+        )[0][0])
+
+        graph_score = max(0.0, min(1.0, similarity))
+
+        hybrid_score = (
+            0.50 * skill_score
+            + 0.20 * industry_score
+            + 0.30 * graph_score
+        )
+
+        results.append({
+            "name": expert["name"],
+            "role": expert["role"],
+            "score": hybrid_score,
+            "skills": sorted(matched),
+            "missing": sorted(missing),
+            "skill_contribution": 0.50 * skill_score,
+            "industry_contribution": 0.20 * industry_score,
+            "graph_contribution": 0.30 * graph_score
+        })
+
+    return
+# COMMUNITYGRAPH AI - Recommendation Interface
+
+st.divider()
+st.header("AI Expert Recommendations")
+
+try:
+    ai_problems = run_query("""
+        MATCH (p:Problem)
+        RETURN p.id AS id, p.name AS name
+        ORDER BY name
+    """)
+
+    if ai_problems:
+
+        options = {
+            f"{p['name']} ({p['id']})": p["id"]
+            for p in ai_problems
+        }
+
+        selected = st.selectbox(
+            "Select a startup problem",
+            list(options.keys()),
+            key="ai_problem_selector"
+        )
+
+        if st.button("Find AI Matches", type="primary"):
+
+            with st.spinner("Analyzing graph..."):
+
+                recommendations = graph_ai_recommend(
+                    options[selected]
+                )
+
+            st.session_state["ai_recommendations"] = (
+                recommendations
+            )
+            st.session_state["ai_selected_problem"] = (
+                options[selected]
+            )
+
+        if (
+            st.session_state.get("ai_selected_problem")
+            == options[selected]
+        ):
+            recommendations = st.session_state.get(
+                "ai_recommendations", []
+            )
+
+            if not recommendations:
+                st.info("No matching experts found.")
+
+            for rank, expert in enumerate(
+                recommendations, start=1
+            ):
+
+                with st.container(border=True):
+
+                    st.subheader(
+                        f"{rank}. {expert['name']}"
+                    )
+
+                    st.caption(expert["role"])
+
+                    st.metric(
+                        "Hybrid Match Score",
+                        f"{expert['score']:.4f}"
+                    )
+
+                    st.progress(
+                        max(0.0, min(1.0, expert["score"]))
+                    )
+
+                    st.write(
+                        "Matching skills:",
+                        ", ".join(expert["skills"])
+                    )
+
+                    st.write(
+                        "Missing skills:",
+                        ", ".join(expert["missing"]) or "None"
+                    )
+
+                    with st.expander(
+                        "Explain AI Recommendation"
+                    ):
+                        st.write(
+                            "Skill contribution:",
+                            round(
+                                expert["skill_contribution"], 4
+                            )
+                        )
+
+                        st.write(
+                            "Industry contribution:",
+                            round(
+                                expert["industry_contribution"], 4
+                            )
+                        )
+
+                        st.write(
+                            "Graph contribution:",
+                            round(
+                                expert["graph_contribution"], 4
+                            )
+                        )
+
+except Exception:
+    st.error(
+        "AI recommendations could not be loaded. "
+        "Check application logs."
+    )
+ sorted(
+        results,
+        key=lambda x: x["score"],
+        reverse=True
+    )
