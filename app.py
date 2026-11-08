@@ -808,6 +808,71 @@ def analyze_startup_problem(description):
         timeout=30.0
     )
 
+def recommend_from_ai_analysis(analysis):
+
+    experts = run_query("""
+        MATCH (u:User)
+        OPTIONAL MATCH (u)-[:HAS_SKILL]->(s:Skill)
+        WITH u, collect(DISTINCT s.name) AS skills
+
+        OPTIONAL MATCH (u)-[:INTERESTED_IN]->(i:Sector)
+
+        RETURN
+            u.id AS id,
+            u.name AS name,
+            u.role AS role,
+            skills,
+            collect(DISTINCT i.name) AS industries
+    """)
+
+    required = {
+        s.strip().casefold()
+        for s in analysis["required_skills"]
+    }
+
+    industry = analysis["industry"].strip().casefold()
+
+    recommendations = []
+
+    for expert in experts:
+        skills = {
+            s.strip().casefold()
+            for s in expert["skills"] if s
+        }
+
+        matched = required & skills
+
+        if not matched:
+            continue
+
+        skill_score = len(matched) / len(required)
+
+        industry_score = float(
+            industry in {
+                i.strip().casefold()
+                for i in expert["industries"] if i
+            }
+        )
+
+        score = (
+            0.75 * skill_score
+            + 0.25 * industry_score
+        )
+
+        recommendations.append({
+            "name": expert["name"],
+            "role": expert["role"],
+            "score": round(score, 4),
+            "matched_skills": sorted(matched),
+            "missing_skills": sorted(required - skills)
+        })
+
+    return sorted(
+        recommendations,
+        key=lambda x: x["score"],
+        reverse=True
+    )
+
     response = client.chat.completions.create(
         
 model="openai/gpt-oss-20b",
