@@ -1083,6 +1083,7 @@ problem_text = st.text_area(
     key="ai_problem_text"
 )
 
+
 if st.button("Analyze with AI", key="analyze_ai_button"):
 
     if len(problem_text.strip()) < 20:
@@ -1094,9 +1095,25 @@ if st.button("Analyze with AI", key="analyze_ai_button"):
                 analysis_result = analyze_startup_problem(
                     problem_text.strip()
                 )
+
                 st.session_state["problem_analysis"] = (
                     analysis_result
                 )
+
+                st.success("AI analysis completed!")
+
+            except Exception as error:
+                st.error("AI analysis failed.")
+                st.write(
+                    "Error type:",
+                    type(error).__name__
+                )
+
+                import logging
+                logging.exception(
+                    "AI Problem Analyzer failed"
+                )
+
       
             except Exception as error:
                 st.error("AI analysis failed.")
