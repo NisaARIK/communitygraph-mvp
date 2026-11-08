@@ -129,3 +129,152 @@ except Exception:
         "Check the database connection and configuration."
     )
     st.stop()
+
+# COMMUNITYGRAPH v0.2
+# Create Startup Problem
+
+import uuid
+import hmac
+
+st.divider()
+st.header("Create Startup Problem")
+
+admin_password = st.text_input(
+    "Admin password",
+    type="password",
+    key="admin_password"
+)
+
+expected_password = st.secrets.get("ADMIN_PASSWORD", "")
+
+is_admin = bool(
+    expected_password
+    and hmac.compare_digest(
+        admin_password,
+        expected_password
+    )
+)
+
+if not is_admin:
+    st.info(
+        "Enter the admin password to create a problem."
+    )
+else:
+    founders = run_query("""
+        MATCH (u:User)
+        WHERE u.role = 'Founder'
+        RETURN u.id AS id, u.name AS name
+        ORDER BY name
+    """)
+
+    if not founders:
+        st.warning("No founders found.")
+    else:
+        founder_options = {
+            f["name"]: f["id"]
+            for f in founders
+        }
+
+        with st.form("create_problem_form"):
+
+            title = st.text_input(
+                "Problem title"
+            )
+
+            description = st.text_area(
+                "Problem description"
+            )
+
+            sector = st.text_input(
+                "Industry",
+                placeholder="HealthTech"
+            )
+
+            skills_text = st.text_input(
+                "Required skills",
+                placeholder="Python, Machine Learning"
+            )
+
+            founder_name = st.selectbox(
+                "Problem owner",
+                list(founder_options.keys())
+            )
+
+            submitted = st.form_submit_button(
+                "Create Problem"
+            )
+
+        if submitted:
+
+            skills = list(dict.fromkeys(
+                s.strip()
+                for s in skills_text.split(",")
+                if s.strip()
+            ))
+
+            if not title.strip() or not sector.strip() or not skills:
+                st.error(
+                    "Title, industry and skills are required."
+                )
+            else:
+                problem_id = "p_" + uuid.uuid4().hex[:12]
+
+                try:
+                    run_query("""
+                        MATCH (owner:User {id: $owner_id})
+
+                        CREATE (p:Problem {
+                            id: $problem_id,
+                            name: $title,
+                            description: $description,
+                            sector: $sector
+                        })
+
+                        CREATE (owner)-[:OWNS]->(p)
+
+                        MERGE (industry:Sector {
+                            id: $sector_id
+                        })
+                        ON CREATE SET
+                            industry.name = $sector,
+                            industry.type = 'Sector'
+
+                        CREATE (p)-[:IN_SECTOR]->(industry)
+
+                        WITH p
+                        UNWIND $skills AS skill_name
+
+                        MERGE (s:Skill {
+                            id: 'skill:' + skill_name
+                        })
+                        ON CREATE SET
+                            s.name = skill_name,
+                            s.type = 'Skill'
+
+                        CREATE (p)-[:REQUIRES]->(s)
+
+                        RETURN p.id AS id
+                    """,
+                        owner_id=founder_options[founder_name],
+                        problem_id=problem_id,
+                        title=title.strip(),
+                        description=description.strip(),
+                        sector=sector.strip(),
+                        sector_id="sector:" + sector.strip(),
+                        skills=skills
+                    )
+
+                    st.success(
+                        "Startup problem created successfully!"
+                    )
+
+                    st.info(
+                        "Problem saved to Neo4j. "
+                        "Expert matching will be added next."
+                    )
+
+                except Exception:
+                    st.error(
+                        "Could not save the problem. "
+                        "Check the application logs."
+                    )
