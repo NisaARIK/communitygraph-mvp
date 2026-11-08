@@ -1097,8 +1097,18 @@ if st.button("Analyze with AI", key="analyze_ai_button"):
                 st.session_state["problem_analysis"] = (
                     analysis_result
                 )
+      
             except Exception as error:
-    st.error("AI analysis failed.")
+                st.error("AI analysis failed.")
+                st.write(
+                    "Error type:",
+                    type(error).__name__
+                )
+
+                import logging
+                logging.exception(
+                    "AI Problem Analyzer failed"
+                )
 
     # Show only the exception type publicly
     st.write("Error type:", type(error).__name__)
