@@ -1172,12 +1172,6 @@ try:
                                 expert["graph_contribution"], 4
                             )
                         )
-                        st.write(
-                            "Graph contribution:",
-                            round(
-                                expert["graph_contribution"], 4
-                            )
-                        )
 
     else:
         st.info("No startup problems found.")
@@ -1223,7 +1217,11 @@ if st.button("Analyze with AI", key="analyze_ai_button"):
                 st.session_state["problem_analysis"] = (
                     analysis_result
                 )
+                st.session_state["cg_analyzed_description"] = problem_text.strip()
                 st.session_state.pop("ai_expert_matches", None)
+                st.session_state.pop("cg_saved_problem_id", None)
+                st.session_state.pop("cg_graph_matches", None)
+                st.session_state.pop("cg_graph_error", None)
                 st.success("AI analysis completed!")
 
             except Exception as error:
@@ -1238,18 +1236,6 @@ if st.button("Analyze with AI", key="analyze_ai_button"):
                     "AI Problem Analyzer failed"
                 )
 
-      
-            except Exception as error:
-                st.error("AI analysis failed.")
-                st.write(
-                    "Error type:",
-                    type(error).__name__
-                )
-
-                import logging
-                logging.exception(
-                    "AI Problem Analyzer failed"
-                )
 
 
 if "problem_analysis" in st.session_state:
@@ -1360,3 +1346,154 @@ else:
         "Analyze a startup problem first "
         "to find matching experts."
     )
+
+
+# COMMUNITYGRAPH v0.6 (dev) - AI analysis -> Neo4j -> Graph AI
+# Existing analyzer, manual problem creation and recommendation views remain unchanged.
+
+def save_ai_analyzed_problem(owner_id, title, description, analysis):
+    """Persist an AI-analyzed problem with the graph relationships Graph AI needs."""
+    industry = analysis.get("industry", "").strip()
+    skills = list(dict.fromkeys(
+        value.strip() for value in analysis.get("required_skills", [])
+        if isinstance(value, str) and value.strip()
+    ))
+    if not owner_id or not title.strip() or len(description.strip()) < 20:
+        raise ValueError("Owner, title and a description of at least 20 characters are required.")
+    if not industry or not skills:
+        raise ValueError("AI analysis must include an industry and at least one skill.")
+
+    new_problem_id = "p_" + uuid.uuid4().hex[:12]
+    saved = run_query("""
+        MATCH (owner:User {id: $owner_id})
+        WHERE owner.role = 'Founder'
+        CREATE (p:Problem {
+            id: $problem_id,
+            name: $title,
+            description: $description,
+            sector: $industry
+        })
+        CREATE (owner)-[:OWNS]->(p)
+        MERGE (sector:Sector {id: $sector_id})
+        ON CREATE SET sector.name = $industry, sector.type = 'Sector'
+        CREATE (p)-[:IN_SECTOR]->(sector)
+        WITH p
+        UNWIND $skills AS skill_name
+        MERGE (skill:Skill {id: 'skill:' + skill_name})
+        ON CREATE SET skill.name = skill_name, skill.type = 'Skill'
+        MERGE (p)-[:REQUIRES]->(skill)
+        RETURN DISTINCT p.id AS id
+    """,
+        owner_id=owner_id,
+        problem_id=new_problem_id,
+        title=title.strip(),
+        description=description.strip(),
+        industry=industry,
+        sector_id="sector:" + industry,
+        skills=skills
+    )
+    if not saved:
+        raise ValueError("No Founder profile was found for the selected owner.")
+    return saved[0]["id"]
+
+
+st.divider()
+st.header("AI to Graph AI - End-to-End Matching (dev)")
+st.caption("Analyze a problem above, then save it as a graph and find hybrid matches.")
+
+cg_analysis = st.session_state.get("problem_analysis")
+if not isinstance(cg_analysis, dict):
+    st.info("First run Analyze with AI above.")
+else:
+    st.write("**Detected industry:**", cg_analysis.get("industry", ""))
+    st.write("**Detected skills:**", ", ".join(cg_analysis.get("required_skills", [])))
+    cg_admin_password = st.text_input(
+        "Admin password for AI problem saving",
+        type="password",
+        key="cg_ai_save_admin_password"
+    )
+    cg_expected_password = st.secrets.get("ADMIN_PASSWORD", "")
+    cg_is_admin = bool(
+        cg_expected_password
+        and hmac.compare_digest(cg_admin_password, cg_expected_password)
+    )
+
+    if not cg_is_admin:
+        st.info("Admin access is required to save AI-analyzed problems.")
+    else:
+        try:
+            cg_founders = run_query("""
+                MATCH (u:User)
+                WHERE u.role = 'Founder'
+                RETURN u.id AS id, u.name AS name
+                ORDER BY name
+            """)
+            if not cg_founders:
+                st.warning("Create a Founder profile before saving a problem.")
+            else:
+                cg_founder_options = {
+                    f"{f['name']} ({f['id']})": f["id"] for f in cg_founders
+                }
+                with st.form("cg_ai_graph_save_form"):
+                    cg_title = st.text_input("Problem title", key="cg_ai_graph_title")
+                    cg_owner = st.selectbox(
+                        "Problem owner", list(cg_founder_options),
+                        key="cg_ai_graph_owner"
+                    )
+                    st.caption("The current AI problem description will be saved.")
+                    cg_submit = st.form_submit_button("Save to Neo4j and run Graph AI")
+
+                if cg_submit:
+                    try:
+                        with st.spinner("Saving problem and calculating graph matches..."):
+                            cg_problem_id = save_ai_analyzed_problem(
+                                cg_founder_options[cg_owner],
+                                cg_title,
+                                st.session_state.get("cg_analyzed_description", ""),
+                                cg_analysis
+                            )
+                            st.session_state["cg_saved_problem_id"] = cg_problem_id
+                            st.session_state.pop("cg_graph_error", None)
+                            try:
+                                st.session_state["cg_graph_matches"] = graph_ai_recommend(
+                                    cg_problem_id
+                                )
+                            except Exception as graph_error:
+                                # The Neo4j write has already succeeded; do not retry it.
+                                st.session_state["cg_graph_matches"] = []
+                                st.session_state["cg_graph_error"] = type(graph_error).__name__
+                                import logging
+                                logging.exception("Graph AI failed after problem was saved")
+                        st.success("Problem saved to Neo4j.")
+                    except Exception as save_error:
+                        st.error("Could not save AI-analyzed problem.")
+                        st.write("Error type:", type(save_error).__name__)
+                        import logging
+                        logging.exception("AI problem save failed")
+        except Exception as founder_error:
+            st.error("Could not load Founder profiles.")
+            st.write("Error type:", type(founder_error).__name__)
+
+    if st.session_state.get("cg_saved_problem_id"):
+        st.write("**Saved problem ID:**", st.session_state["cg_saved_problem_id"])
+        if st.session_state.get("cg_graph_error"):
+            st.warning(
+                "Problem was saved, but Graph AI could not finish. "
+                "Error type: " + st.session_state["cg_graph_error"]
+            )
+        else:
+            cg_matches = st.session_state.get("cg_graph_matches", [])
+            if not cg_matches:
+                st.info("No hybrid graph matches were found for this problem.")
+            for rank, expert in enumerate(cg_matches, start=1):
+                with st.container(border=True):
+                    st.subheader(f"{rank}. {expert['name']}")
+                    st.caption(expert.get("role", ""))
+                    st.metric("Hybrid Match Score", f"{expert['score']:.4f}")
+                    st.progress(max(0.0, min(1.0, expert["score"])))
+                    st.write("Matching skills:", ", ".join(expert["skills"]))
+                    st.write("Missing skills:", ", ".join(expert["missing"]) or "None")
+                    with st.expander("Explain AI Recommendation"):
+                        st.write("Skill contribution:", round(expert["skill_contribution"], 4))
+                        st.write("Industry contribution:", round(expert["industry_contribution"], 4))
+                        st.write("Graph contribution:", round(expert["graph_contribution"], 4))
