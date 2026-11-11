@@ -1,4 +1,100 @@
 
+# CommunityGraph v0.7 - Supabase Authentication
+import streamlit as st
+from supabase import create_client
+
+@st.cache_resource
+def get_supabase():
+    return create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_ANON_KEY"]
+    )
+
+def auth_screen():
+    st.title("CommunityGraph")
+    st.caption("Connect founders with the right experts.")
+
+    login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
+
+    with login_tab:
+        with st.form("login_form"):
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            login = st.form_submit_button("Login")
+
+        if login:
+            try:
+                result = get_supabase().auth.sign_in_with_password({
+                    "email": email.strip(),
+                    "password": password
+                })
+                if result.session:
+                    st.session_state["cg_access_token"] = result.session.access_token
+                    st.session_state["cg_refresh_token"] = result.session.refresh_token
+                    st.rerun()
+            except Exception:
+                st.error("Login failed. Check your credentials.")
+
+    with signup_tab:
+        with st.form("signup_form"):
+            name = st.text_input("Full Name")
+            email_new = st.text_input("Email Address")
+            password_new = st.text_input("Create Password", type="password")
+            role = st.selectbox("Role", ["Founder", "Expert"])
+            signup = st.form_submit_button("Create Account")
+
+        if signup:
+            if not name.strip() or not email_new.strip() or len(password_new) < 8:
+                st.error("Enter your name, email and a password of at least 8 characters.")
+            else:
+                try:
+                    get_supabase().auth.sign_up({
+                        "email": email_new.strip(),
+                        "password": password_new,
+                        "options": {
+                            "data": {
+                                "full_name": name.strip(),
+                                "role": role
+                            }
+                        }
+                    })
+                    st.success("Registration submitted. Check your email for confirmation.")
+                except Exception:
+                    st.error("Registration could not be completed.")
+
+if "cg_access_token" not in st.session_state:
+    auth_screen()
+    st.stop()
+
+try:
+    auth_client = get_supabase()
+    auth_client.auth.set_session(
+        st.session_state["cg_access_token"],
+        st.session_state["cg_refresh_token"]
+    )
+    authenticated_user = auth_client.auth.get_user().user
+    if authenticated_user is None:
+        raise ValueError("Invalid session")
+    current_session = auth_client.auth.get_session()
+    if current_session:
+        st.session_state["cg_access_token"] = current_session.access_token
+        st.session_state["cg_refresh_token"] = current_session.refresh_token
+except Exception:
+    st.session_state.pop("cg_access_token", None)
+    st.session_state.pop("cg_refresh_token", None)
+    st.warning("Your session has expired. Please log in again.")
+    st.stop()
+
+with st.sidebar:
+    st.write("Logged in:", authenticated_user.email)
+    if st.button("Logout"):
+        auth_client.auth.sign_out()
+        st.session_state.pop("cg_access_token", None)
+        st.session_state.pop("cg_refresh_token", None)
+        st.rerun()
+
+# Existing CommunityGraph application continues below.
+
 import streamlit as st
 import pandas as pd
 from neo4j import GraphDatabase
