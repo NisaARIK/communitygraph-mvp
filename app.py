@@ -3,7 +3,11 @@
 import streamlit as st
 from supabase import create_client
 
-@st.cache_resource
+st.set_page_config(
+    page_title="CommunityGraph",
+    page_icon="🌐",
+    layout="wide"
+)
 
 def get_supabase():
     if "cg_supabase_client" not in st.session_state:
@@ -178,11 +182,6 @@ import streamlit as st
 import pandas as pd
 from neo4j import GraphDatabase
 
-st.set_page_config(
-    page_title="CommunityGraph",
-    page_icon="🌐",
-    layout="wide"
-)
 
 @st.cache_resource
 def get_driver():
@@ -204,6 +203,62 @@ def run_query(query, **params):
         **params
     )
     return [dict(r) for r in records]
+
+
+# CommunityGraph v0.7 - authenticated Supabase -> Neo4j profile sync.
+# Uses a distinct auth_id and never matches demo users by display name.
+def cg_sync_authenticated_user():
+    user_id = str(authenticated_user.id)
+    try:
+        result = (
+            auth_client.table("profiles")
+            .select("full_name, role, bio, industry")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+        profile = result.data
+        if not profile:
+            return False, "Supabase profile not found."
+
+        rows = run_query("""
+            MERGE (u:User {auth_id: $auth_id})
+            ON CREATE SET u.id = 'auth:' + $auth_id,
+                          u.source = 'supabase',
+                          u.created_at = datetime()
+            SET u.name = $full_name,
+                u.full_name = $full_name,
+                u.role = $role,
+                u.bio = $bio,
+                u.industry = $industry,
+                u.updated_at = datetime()
+            RETURN u.auth_id AS auth_id
+        """,
+            auth_id=user_id,
+            full_name=profile.get("full_name") or "",
+            role=profile.get("role") or "Founder",
+            bio=profile.get("bio") or "",
+            industry=profile.get("industry") or ""
+        )
+        if len(rows) != 1 or rows[0]["auth_id"] != user_id:
+            return False, "Neo4j verification failed."
+        return True, "User synchronized successfully."
+    except Exception as exc:
+        import logging
+        logging.exception("Authenticated user sync failed")
+        return False, f"Synchronization failed: {type(exc).__name__}"
+
+
+# Place before the legacy application, which contains early st.stop() calls.
+with st.sidebar:
+    st.divider()
+    st.caption("v0.7 Integration Test")
+    if st.button("Sync My Profile to Neo4j", key="cg_sync_neo4j"):
+        success, message = cg_sync_authenticated_user()
+        if success:
+            st.success(message)
+        else:
+            st.error(message)
 
 st.title("🌐 CommunityGraph")
 st.caption(
