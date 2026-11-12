@@ -99,6 +99,81 @@ with st.sidebar:
 
 # Existing CommunityGraph application continues below.
 
+# CommunityGraph v0.7 - My Profile
+def show_my_profile():
+    st.subheader("My Profile")
+
+    user_id = str(authenticated_user.id)
+
+    try:
+        result = (
+            auth_client.table("profiles")
+            .select("full_name, role, bio, industry")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+        profile = result.data or {}
+    except Exception:
+        st.error("Profile could not be loaded.")
+        return
+
+    st.caption(f"Account: {authenticated_user.email}")
+    st.write("Current role:", profile.get("role", "Member"))
+
+    with st.form("cg_profile_form"):
+        full_name = st.text_input(
+            "Full Name",
+            value=profile.get("full_name") or ""
+        )
+
+        industry = st.text_input(
+            "Industry / Field",
+            value=profile.get("industry") or ""
+        )
+
+        bio = st.text_area(
+            "Bio / Skills / Interests",
+            value=profile.get("bio") or ""
+        )
+
+        save_profile = st.form_submit_button(
+            "Save Profile"
+        )
+
+    if save_profile:
+        if not full_name.strip():
+            st.error("Full Name cannot be empty.")
+            return
+
+        try:
+            auth_client.table("profiles").update({
+                "full_name": full_name.strip(),
+                "industry": industry.strip(),
+                "bio": bio.strip()
+            }).eq("id", user_id).execute()
+
+            st.success("Profile updated successfully.")
+            st.rerun()
+
+        except Exception:
+            st.error("Profile update failed.")
+
+
+with st.sidebar:
+    st.divider()
+    show_profile = st.checkbox(
+        "My Profile",
+        key="cg_show_my_profile"
+    )
+
+if show_profile:
+    show_my_profile()
+    st.stop()
+
+# End of My Profile
+
+
 import streamlit as st
 import pandas as pd
 from neo4j import GraphDatabase
