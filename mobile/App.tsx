@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './src/supabase';
+import Projects from './src/Projects';
 
 type Profile = {
   full_name: string | null;
@@ -168,6 +169,7 @@ export default function App() {
           </TouchableOpacity>
         </View>
       ) : (
+        <>
         <View style={styles.card}>
           <Text style={styles.heading}>My Profile</Text>
           <Text style={styles.email}>{session.user.email}</Text>
@@ -192,6 +194,8 @@ export default function App() {
             <Text style={styles.link}>Logout</Text>
           </TouchableOpacity>
         </View>
+        <Projects userId={session.user.id} />
+        </>
       )}
     </ScrollView>
   );
