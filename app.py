@@ -4,11 +4,15 @@ import streamlit as st
 from supabase import create_client
 
 @st.cache_resource
+
 def get_supabase():
-    return create_client(
-        st.secrets["SUPABASE_URL"],
-        st.secrets["SUPABASE_ANON_KEY"]
-    )
+    if "cg_supabase_client" not in st.session_state:
+        st.session_state["cg_supabase_client"] = create_client(
+            st.secrets["SUPABASE_URL"],
+            st.secrets["SUPABASE_ANON_KEY"]
+        )
+
+    return st.session_state["cg_supabase_client"]
 
 def auth_screen():
     st.title("CommunityGraph")
