@@ -1672,3 +1672,86 @@ else:
                         st.write("Skill contribution:", round(expert["skill_contribution"], 4))
                         st.write("Industry contribution:", round(expert["industry_contribution"], 4))
                         st.write("Graph contribution:", round(expert["graph_contribution"], 4))
+
+# ==========================================================
+# CommunityGraph v0.7 - Supabase / Neo4j User Sync
+# ==========================================================
+
+def cg_sync_authenticated_user():
+    """Synchronize the verified Supabase user with Neo4j."""
+
+    user_id = str(authenticated_user.id)
+
+    try:
+        # Load the profile using the authenticated session.
+        response = (
+            auth_client.table("profiles")
+            .select("full_name, role, bio, industry")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+
+        profile = response.data
+
+        if not profile:
+            return False, "Supabase profile not found."
+
+        # Use an explicit transaction with parameters.
+        # Never match existing demo users by name or email.
+        query = """
+        MERGE (u:User {auth_id: $auth_id})
+        ON CREATE SET
+            u.source = 'supabase',
+            u.created_at = datetime()
+        SET
+            u.full_name = $full_name,
+            u.role = $role,
+            u.bio = $bio,
+            u.industry = $industry,
+            u.updated_at = datetime()
+        RETURN u.auth_id AS auth_id
+        """
+
+        with get_driver().session(
+            database=get_database()
+        ) as session:
+            record = session.run(
+                query,
+                auth_id=user_id,
+                full_name=profile.get("full_name") or "",
+                role=profile.get("role") or "Founder",
+                bio=profile.get("bio") or "",
+                industry=profile.get("industry") or ""
+            ).single()
+
+        if not record or record["auth_id"] != user_id:
+            return False, "Neo4j verification failed."
+
+        return True, "User synchronized successfully."
+
+    except Exception as exc:
+        return False, f"Synchronization failed: {type(exc).__name__}"
+
+
+# Temporary integration test panel.
+# Remove this panel after verification.
+if "cg_access_token" in st.session_state:
+    with st.sidebar:
+        st.divider()
+        st.caption("v0.7 Integration Test")
+
+        if st.button(
+            "Sync My Profile to Neo4j",
+            key="cg_sync_neo4j"
+        ):
+            success, message = cg_sync_authenticated_user()
+
+            if success:
+                st.success(message)
+            else:
+                st.error(message)
+
+# ==========================================================
+# End of Supabase / Neo4j User Sync
+# ==========================================================
