@@ -23,7 +23,7 @@ const TYPES = [
 ];
 
 export default function Projects({ userId }: { userId: string }) {
-  const [page, setPage] = useState<'discover' | 'create' | 'detail'>('discover');
+  const [page, setPage] = useState<'discover' | 'create' | 'detail' | 'edit'>('discover');
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<Project | null>(null);
   const [filter, setFilter] = useState('All');
@@ -36,6 +36,7 @@ export default function Projects({ userId }: { userId: string }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [status, setStatus] = useState('Open');
 
   const loadProjects = useCallback(async () => {
     setLoading(true);
@@ -54,6 +55,85 @@ export default function Projects({ userId }: { userId: string }) {
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+  function editProject(project: Project) {
+    if (project.owner_id !== userId) return;
+    setSelected(project);
+    setTitle(project.title);
+    setDescription(project.description);
+    setType(project.project_type);
+    setIndustry(project.industry ?? '');
+    setSkills((project.required_skills ?? []).join(', '));
+    setStatus(project.status);
+    setPage('edit');
+  }
+
+  async function updateProject() {
+    if (!selected || selected.owner_id !== userId || saving) return;
+    const cleanTitle = title.trim();
+    const cleanDescription = description.trim();
+    if (cleanTitle.length < 3 || cleanTitle.length > 150 ||
+        cleanDescription.length < 10 || cleanDescription.length > 5000) {
+      Alert.alert('Validation', 'Title must be 3–150 characters and description 10–5000.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data, error: updateError } = await supabase.from('projects')
+        .update({
+          title: cleanTitle,
+          description: cleanDescription,
+          project_type: type,
+          industry: industry.trim(),
+          required_skills: [...new Set(skills.split(',').map(s => s.trim()).filter(Boolean))],
+          status,
+        })
+        .eq('id', selected.id)
+        .eq('owner_id', userId)
+        .select('id,owner_id,title,description,project_type,industry,required_skills,status,created_at')
+        .maybeSingle();
+      if (updateError) throw updateError;
+      if (!data) throw new Error('Update not permitted or project not found.');
+      setSelected(data as Project);
+      await loadProjects();
+      setPage('detail');
+      Alert.alert('Success', 'Project updated successfully.');
+    } catch (e: any) {
+      Alert.alert('Update failed', e?.message ?? 'Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function confirmDelete(project: Project) {
+    if (project.owner_id !== userId || saving) return;
+    Alert.alert('Delete project?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => { void deleteProject(project); } },
+    ]);
+  }
+
+  async function deleteProject(project: Project) {
+    if (project.owner_id !== userId || saving) return;
+    setSaving(true);
+    try {
+      const { data, error: deleteError } = await supabase.from('projects')
+        .delete()
+        .eq('id', project.id)
+        .eq('owner_id', userId)
+        .select('id');
+      if (deleteError) throw deleteError;
+      if (!data || data.length !== 1) throw new Error('Delete not permitted or project not found.');
+      setSelected(null);
+      setPage('discover');
+      await loadProjects();
+      Alert.alert('Deleted', 'Project deleted successfully.');
+    } catch (e: any) {
+      Alert.alert('Delete failed', e?.message ?? 'Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function createProject() {
     const cleanTitle = title.trim();
@@ -144,9 +224,9 @@ export default function Projects({ userId }: { userId: string }) {
         {button('Create Project', () => setPage('create'), page === 'create')}
       </View>
 
-      {page === 'create' && (
+      {(page === 'create' || page === 'edit') && (
         <View style={styles.card}>
-          <Text style={styles.title}>Create a Project</Text>
+          <Text style={styles.title}>{page === 'edit' ? 'Edit Project' : 'Create a Project'}</Text>
           <TextInput
             style={styles.input}
             placeholder="Project title"
@@ -182,15 +262,28 @@ export default function Projects({ userId }: { userId: string }) {
             value={skills}
             onChangeText={setSkills}
           />
+          {page === 'edit' && (
+            <>
+              <Text style={styles.label}>Project status</Text>
+              <View style={styles.chips}>
+                {['Open', 'In Progress', 'Completed'].map(s => (
+                  <React.Fragment key={s}>
+                    {button(s, () => setStatus(s), status === s)}
+                  </React.Fragment>
+                ))}
+              </View>
+            </>
+          )}
           <TouchableOpacity
             disabled={saving}
             style={[styles.primaryButton, saving && styles.disabled]}
-            onPress={createProject}
+            onPress={page === 'edit' ? updateProject : createProject}
           >
             <Text style={styles.primaryText}>
-              {saving ? 'Creating...' : 'Publish Project'}
+              {saving ? 'Saving...' : page === 'edit' ? 'Save Changes' : 'Publish Project'}
             </Text>
           </TouchableOpacity>
+          {page === 'edit' && button('Cancel editing', () => setPage('detail'))}
         </View>
       )}
 
@@ -266,6 +359,18 @@ export default function Projects({ userId }: { userId: string }) {
               ? 'Your project'
               : 'Community project'}
           </Text>
+          {selected.owner_id === userId && (
+            <View style={styles.ownerActions}>
+              {button('Edit Project', () => editProject(selected))}
+              <TouchableOpacity
+                disabled={saving}
+                style={[styles.deleteButton, saving && styles.disabled]}
+                onPress={() => confirmDelete(selected)}
+              >
+                <Text style={styles.deleteText}>Delete Project</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       )}
     </View>
@@ -304,5 +409,8 @@ const styles = StyleSheet.create({
   },
   primaryText: { color: '#FFF', textAlign: 'center', fontWeight: '700' },
   disabled: { opacity: 0.5 },
+  ownerActions: { gap: 10, marginTop: 12 },
+  deleteButton: { padding: 12, borderRadius: 10, backgroundColor: '#FCE8E8' },
+  deleteText: { color: '#A32222', textAlign: 'center', fontWeight: '700' },
   error: { color: '#B00020', marginTop: 12 },
 });
