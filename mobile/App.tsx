@@ -19,6 +19,9 @@ type Profile = {
   role: string | null;
   bio: string | null;
   industry: string | null;
+  startup_name?: string | null;
+  hub_name?: string | null;
+  startup_stage?: string | null;
 };
 
 export default function App() {
@@ -32,6 +35,10 @@ export default function App() {
   const [role, setRole] = useState('Expert');
   const [bio, setBio] = useState('');
   const [industry, setIndustry] = useState('');
+  const [startupName, setStartupName] = useState('');
+  const [hubName, setHubName] = useState('');
+  const [startupStage, setStartupStage] = useState('');
+  const [needs, setNeeds] = useState<string[]>([]);
 
   const notify = (message: string) => Alert.alert('CommunityGraph', message);
 
@@ -54,7 +61,7 @@ export default function App() {
     async function loadProfile() {
       const { data, error } = await supabase
         .from('profiles')
-        .select('full_name,role,bio,industry')
+        .select('full_name,role,bio,industry,startup_name,hub_name,startup_stage')
         .eq('id', session!.user.id)
         .maybeSingle();
 
@@ -69,6 +76,9 @@ export default function App() {
       setRole(profile?.role ?? 'Expert');
       setBio(profile?.bio ?? '');
       setIndustry(profile?.industry ?? '');
+      setStartupName(profile?.startup_name ?? '');
+      setHubName(profile?.hub_name ?? '');
+      setStartupStage(profile?.startup_stage ?? '');
     }
 
     loadProfile();
@@ -117,6 +127,9 @@ export default function App() {
         role,
         bio: bio.trim(),
         industry: industry.trim(),
+        startup_name: startupName.trim(),
+        hub_name: hubName.trim(),
+        startup_stage: startupStage.trim(),
       }, { onConflict: 'id' });
 
       if (error) throw error;
@@ -136,7 +149,7 @@ export default function App() {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.logo}>🌐 CommunityGraph</Text>
       <Text style={styles.subtitle}>
-        Connect people. Build projects. Solve problems.
+        Map the network. Decode the problem. Match the solver.
       </Text>
 
       {!session ? (
@@ -182,6 +195,24 @@ export default function App() {
           </TouchableOpacity>
           <TextInput style={styles.input} placeholder="Industry"
             value={industry} onChangeText={setIndustry} />
+            <TextInput
+  style={styles.input}
+  placeholder="Startup Name"
+  value={startupName}
+  onChangeText={setStartupName}
+/>
+<TextInput
+  style={styles.input}
+  placeholder="Hub / Community"
+  value={hubName}
+  onChangeText={setHubName}
+/>
+<TextInput
+  style={styles.input}
+  placeholder="Startup Stage (Idea / MVP / Growth)"
+  value={startupStage}
+  onChangeText={setStartupStage}
+/>
           <TextInput style={[styles.input, styles.multiline]}
             placeholder="About you" multiline
             value={bio} onChangeText={setBio} />
