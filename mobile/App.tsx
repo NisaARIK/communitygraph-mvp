@@ -12,6 +12,7 @@ import {
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './src/supabase';
 import Projects from './src/Projects';
+import AIAnalysis from './src/AIAnalysis';
 
 type Profile = {
   full_name: string | null;
@@ -194,6 +195,7 @@ export default function App() {
             <Text style={styles.link}>Logout</Text>
           </TouchableOpacity>
         </View>
+        <AIAnalysis accessToken={session.access_token} />
         <Projects userId={session.user.id} />
         </>
       )}
