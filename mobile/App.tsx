@@ -22,7 +22,21 @@ type Profile = {
   startup_name?: string | null;
   hub_name?: string | null;
   startup_stage?: string | null;
+  needs?: string[] | null;
+  skills_offered?: string[] | null;
 };
+const MATCH_TAGS = [
+  'AI / Machine Learning',
+  'Software Development',
+  'Product Development',
+  'Sales & Marketing',
+  'Investment & Finance',
+  'Business Development',
+  'Legal',
+  'Operations',
+  'Data Science',
+  'Design',
+] as const;
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -39,8 +53,22 @@ export default function App() {
   const [hubName, setHubName] = useState('');
   const [startupStage, setStartupStage] = useState('');
   const [needs, setNeeds] = useState<string[]>([]);
+  const [skillsOffered, setSkillsOffered] = useState<string[]>([]);
 
   const notify = (message: string) => Alert.alert('CommunityGraph', message);
+  const toggleTag = (
+  tag: string,
+  selected: string[],
+  setSelected: React.Dispatch<React.SetStateAction<string[]>>
+) => {
+  if (selected.includes(tag)) {
+    setSelected(selected.filter(item => item !== tag));
+  } else if (selected.length < 3) {
+    setSelected([...selected, tag]);
+  } else {
+    notify('En fazla 3 seçenek belirleyebilirsiniz.');
+  }
+};
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -61,7 +89,7 @@ export default function App() {
     async function loadProfile() {
       const { data, error } = await supabase
         .from('profiles')
-        .select('full_name,role,bio,industry,startup_name,hub_name,startup_stage')
+        .select('full_name,role,bio,industry,startup_name,hub_name,startup_stage,needs,skills_offered')
         .eq('id', session!.user.id)
         .maybeSingle();
 
@@ -79,6 +107,8 @@ export default function App() {
       setStartupName(profile?.startup_name ?? '');
       setHubName(profile?.hub_name ?? '');
       setStartupStage(profile?.startup_stage ?? '');
+      setNeeds(profile?.needs ?? []);
+      setSkillsOffered(profile?.skills_offered ?? []);
     }
 
     loadProfile();
@@ -130,6 +160,8 @@ export default function App() {
         startup_name: startupName.trim(),
         hub_name: hubName.trim(),
         startup_stage: startupStage.trim(),
+        needs: needs,
+        skills_offered: skillsOffered,
       }, { onConflict: 'id' });
 
       if (error) throw error;
@@ -216,9 +248,44 @@ export default function App() {
           <TextInput style={[styles.input, styles.multiline]}
             placeholder="About you" multiline
             value={bio} onChangeText={setBio} />
+             <Text style={styles.heading}>My Needs (max 3)</Text>
+{MATCH_TAGS.map(tag => (
+  <TouchableOpacity
+    key={`need-${tag}`}
+    style={[
+      styles.secondary,
+      { marginBottom: 6, backgroundColor: needs.includes(tag) ? '#DDEBFF' : '#F1F0FA' }
+    ]}
+    onPress={() => toggleTag(tag, needs, setNeeds)}
+  >
+    <Text>{needs.includes(tag) ? '✓ ' : '+ '}{tag}</Text>
+   </TouchableOpacity>
+))}
+<Text style={styles.heading}>My Skills (max 3)</Text>
+{MATCH_TAGS.map(tag => (
+  <TouchableOpacity
+    key={`skill-${tag}`}
+    style={[
+      styles.secondary,
+      {
+        marginBottom: 6,
+        backgroundColor: skillsOffered.includes(tag)
+          ? '#DDEBFF'
+          : '#F1F0FA',
+      },
+    ]}
+    onPress={() => toggleTag(tag, skillsOffered, setSkillsOffered)}
+  >
+    <Text>
+      {skillsOffered.includes(tag) ? '✓ ' : '+ '}
+      {tag}
+    </Text>
+  </TouchableOpacity>
+))}
           <TouchableOpacity style={styles.button}
             disabled={busy} onPress={saveProfile}>
             <Text style={styles.buttonText}>
+
               {busy ? 'Saving...' : 'Save Profile'}
             </Text>
           </TouchableOpacity>

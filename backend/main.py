@@ -47,7 +47,12 @@ def verify_user(
 
         return payload
 
-    except Exception:
+    except Exception as exc:
+        print(
+            "JWT verification error:",
+            type(exc).__name__,
+            flush=True
+        )
         raise HTTPException(
             status_code=401,
             detail="Invalid or expired token"
@@ -108,4 +113,40 @@ def analyze_problem(
         raise HTTPException(
             status_code=502,
             detail="AI analysis failed",
+        )
+
+
+class ExpertMatchRequest(BaseModel):
+    industry: str
+    required_skills: list[str]
+
+
+@app.post("/recommend-experts")
+def recommend_experts_endpoint(
+    request: ExpertMatchRequest,
+    user=Depends(verify_user),
+):
+    from backend.matching import recommend_experts
+    from backend.neo4j_experts import get_experts
+
+    try:
+        experts = get_experts()
+
+        matches = recommend_experts(
+            analysis=request.model_dump(),
+            experts=experts,
+            top_k=3,
+        )
+
+        return {"matches": matches}
+
+    except Exception as exc:
+        print(
+            "MATCHING_ERROR_TYPE:",
+            type(exc).__name__,
+            flush=True,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Expert matching temporarily unavailable",
         )

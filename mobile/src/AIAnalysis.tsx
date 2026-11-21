@@ -21,6 +21,17 @@ export default function AIAnalysis({ accessToken }: AIAnalysisProps) {
 } | null>(null);
 
 const [error, setError] = useState('');
+type ExpertMatch = {
+  id: string | null;
+  name: string;
+  role: string;
+  score: number;
+  matched_skills: string[];
+  missing_skills: string[];
+};
+
+const [matches, setMatches] = useState<ExpertMatch[]>([]);
+const [matchingError, setMatchingError] = useState('');
 
 const analyzeProblem = async () => {
     alert('AI butonuna basıldı');
@@ -55,8 +66,44 @@ const analyzeProblem = async () => {
       throw new Error(`AI analizi başarısız: HTTP ${response.status}`);
     }
 
-    const data = await response.json();
-    setResult(data);
+   const data = await response.json();
+setResult(data);
+
+setMatches([]);
+setMatchingError('');
+
+try {
+  const matchResponse = await fetch(
+    `${apiUrl.replace(/\/$/, '')}/recommend-experts`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        industry: data.industry,
+        required_skills: data.required_skills,
+      }),
+    }
+  );
+
+  if (!matchResponse.ok) {
+    throw new Error(
+      `Uzman eşleştirme hatası: HTTP ${matchResponse.status}`
+    );
+  }
+
+  const matchData = await matchResponse.json();
+  setMatches(matchData.matches ?? []);
+
+} catch (matchErr) {
+  setMatchingError(
+    matchErr instanceof Error
+      ? matchErr.message
+      : 'Uzman önerileri alınamadı.'
+  );
+}
   } catch (err) {
     setError(err instanceof Error ? err.message : 'Bir hata oluştu.');
   } finally {
@@ -120,6 +167,49 @@ const analyzeProblem = async () => {
     {result.expert_roles.map((role, index) => (
       <Text key={index}>• {role}</Text>
     ))}
+    <Text style={{ fontWeight: 'bold', marginTop: 20, fontSize: 17 }}>
+  En Uygun 3 Uzman
+</Text>
+
+{matches.map((expert, index) => (
+  <View
+    key={expert.id ?? `expert-${index}`}
+    style={{
+      backgroundColor: '#FFFFFF',
+      padding: 14,
+      borderRadius: 12,
+      marginTop: 10,
+      borderWidth: 1,
+      borderColor: '#E5E7EB',
+    }}
+  >
+    <Text style={{ fontWeight: 'bold', fontSize: 16 }}>
+      {expert.name}
+    </Text>
+
+    <Text>{expert.role}</Text>
+
+    <Text style={{ color: '#4030A0', marginTop: 6 }}>
+      Eşleşme: %{Math.round(expert.score * 100)}
+    </Text>
+
+    <Text style={{ marginTop: 6 }}>
+      Eşleşen beceriler: {expert.matched_skills.join(', ') || 'Yok'}
+    </Text>
+  </View>
+))}
+
+{matches.length === 0 && !matchingError && (
+  <Text style={{ marginTop: 10 }}>
+    Uygun uzman bulunamadı.
+  </Text>
+)}
+
+{matchingError !== '' && (
+  <Text style={{ color: '#B91C1C', marginTop: 10 }}>
+    {matchingError}
+  </Text>
+)}
   </View>
 )}
     </View>
